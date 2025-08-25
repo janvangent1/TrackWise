@@ -163,6 +163,71 @@ def build_msi_installer():
     """Build MSI installer using cx_Freeze"""
     print("🔨 Building MSI installer with cx_Freeze...")
     
+    # Check Python version compatibility
+    if sys.version_info >= (3, 13):
+        print("⚠️  Python 3.13 detected - MSI creation not supported yet")
+        print("💡 cx_Freeze MSI support for Python 3.13 is still in development")
+        print("🔄 Falling back to executable-only build...")
+        
+        # Find main file in current directory or subdirectories
+        main_file = find_main_file()
+        if not main_file:
+            print(f"❌ Error: main_gui_enhanced.py not found in current directory or subdirectories")
+            print("💡 Make sure the file exists and you're running the build script from the correct location")
+            return False
+        
+        # Create setup.py
+        create_setup_py(main_file)
+        
+        # Skip MSI build and go straight to executable
+        print("🚀 Starting executable build (MSI not supported on Python 3.13)...")
+        print("⚠️  This may take several minutes...")
+        
+        exe_cmd = [sys.executable, "setup.py", "build_exe"]
+        
+        try:
+            result = subprocess.run(exe_cmd, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                print("✓ Executable built successfully as fallback!")
+                
+                # Find the executable
+                build_dir = Path("build")
+                if build_dir.exists():
+                    exe_dirs = list(build_dir.glob("exe.win-*"))
+                    if exe_dirs:
+                        exe_dir = exe_dirs[0]
+                        exe_file = exe_dir / "Trackwise.exe"
+                        if exe_file.exists():
+                            exe_size = exe_file.stat().st_size / (1024 * 1024)  # Size in MB
+                            print(f"📦 Executable created: {exe_file}")
+                            print(f"📦 File size: {exe_size:.1f} MB")
+                            print(f"📁 Location: {exe_file.absolute()}")
+                            
+                            print("\n🎯 Executable build completed successfully!")
+                            print("📋 Instructions:")
+                            print(f"   • Your executable is: {exe_file.absolute()}")
+                            print(f"   • Copy the entire '{exe_dir.name}' folder to distribute")
+                            print("   • No Python installation required on target machines")
+                            print("   • Internet connection required for API calls")
+                            print("\n💡 Note: This is an executable, not an MSI installer.")
+                            print("   It may still have antivirus false positive issues.")
+                            print("   Consider using Python 3.11 or 3.12 for MSI creation.")
+                            
+                            return True
+                
+                print("❌ Executable file not found after build")
+                return False
+            else:
+                print("❌ Executable build failed!")
+                print("Error output:")
+                print(result.stderr)
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error during executable build: {e}")
+            return False
+    
     # Find main file in current directory or subdirectories
     main_file = find_main_file()
     if not main_file:
@@ -364,6 +429,13 @@ def main():
         return
     
     print(f"✓ Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
+    
+    # Python 3.13 compatibility warning
+    if sys.version_info >= (3, 13):
+        print("⚠️  Python 3.13 detected - MSI creation not supported yet")
+        print("💡 cx_Freeze MSI support for Python 3.13 is still in development")
+        print("🔄 The script will fall back to executable-only builds")
+        print("💡 For MSI creation, consider using Python 3.11 or 3.12")
     
     # Ask about build options
     print("\n🔧 Build Options:")

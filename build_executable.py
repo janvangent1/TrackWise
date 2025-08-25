@@ -286,13 +286,21 @@ def build_executable(console_mode=False, onefile_mode=False):
         "--collect-all", "shapely", 
         "--collect-all", "geopy",
         "--collect-all", "ctypes",
-        "--copy-metadata", "matplotlib",
-        "--copy-metadata", "numpy",
         "--paths", sys.prefix,
         "--clean",
         "--noconfirm",
         main_file
     ])
+    
+    # Only add copy-metadata for Python versions that support it properly
+    if sys.version_info < (3, 13):
+        cmd.insert(-1, "--copy-metadata")
+        cmd.insert(-1, "matplotlib")
+        cmd.insert(-1, "--copy-metadata")
+        cmd.insert(-1, "numpy")
+    else:
+        print("⚠️  Python 3.13 detected - skipping copy-metadata (may cause issues)")
+        print("💡 Consider using Python 3.11 or 3.12 for better PyInstaller compatibility")
     
     # Look for icon file - prioritize Trackwise.ico
     icon_paths = [
@@ -448,6 +456,13 @@ def main():
         return
     
     print(f"✓ Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
+    
+    # Python 3.13 compatibility warning
+    if sys.version_info >= (3, 13):
+        print("⚠️  Python 3.13 detected - some PyInstaller features may not work properly")
+        print("💡 The --copy-metadata flag has been disabled for compatibility")
+        print("💡 Consider using Python 3.11 or 3.12 for best PyInstaller compatibility")
+        print("🔄 Build will continue with reduced metadata handling")
     
     # Ask about build options
     print("\n🔧 Build Options:")
