@@ -62,6 +62,22 @@ python build_macos.py             # .app bundle + .dmg installer
 python build_linux.py             # Executable + AppImage
 ```
 
+## 🎨 Icon and Branding
+
+Trackwise automatically uses the `Trackwise.ico` file for custom icons across all platforms:
+
+- **Windows**: `.exe` files and desktop shortcuts will use the custom icon
+- **macOS**: `.app` bundles will use the icon (`.ico` or `.icns` format)
+- **Linux**: Executables will use the icon (`.ico` or `.png` format)
+
+### Icon Conversion (macOS)
+For better macOS integration, convert your `.ico` file to `.icns` format:
+```bash
+python convert_icon.py
+```
+
+This creates a native macOS icon file that provides better integration with the Dock, Finder, and other macOS features.
+
 ## 🔧 Build Options
 
 ### Cross-Platform Builder (`build_cross_platform.py`)

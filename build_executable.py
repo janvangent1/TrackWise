@@ -294,8 +294,13 @@ def build_executable(console_mode=False, onefile_mode=False):
         main_file
     ])
     
-    # Look for icon file in main directory and current directory
-    icon_paths = ["Trackwise.ico", "icon.ico", os.path.join(main_dir, "Trackwise.ico"), os.path.join(main_dir, "icon.ico")]
+    # Look for icon file - prioritize Trackwise.ico
+    icon_paths = [
+        "Trackwise.ico",  # Primary icon file
+        os.path.join(main_dir, "Trackwise.ico"),  # In main directory
+        "icon.ico",  # Fallback icon
+        os.path.join(main_dir, "icon.ico")  # Fallback in main directory
+    ]
     icon_found = None
     for icon_path in icon_paths:
         if os.path.exists(icon_path):
@@ -306,8 +311,13 @@ def build_executable(console_mode=False, onefile_mode=False):
         cmd.insert(-1, "--icon")
         cmd.insert(-1, icon_found)
         print(f"✓ Using icon: {icon_found}")
+        if icon_found.endswith("Trackwise.ico"):
+            print("🎨  Using primary Trackwise icon for executable")
+        else:
+            print("⚠️  Using fallback icon - consider using Trackwise.ico for better branding")
     else:
         print("ℹ️  No icon file found, building without custom icon")
+        print("💡 Add Trackwise.ico to the project directory for custom executable icon")
     
     # Add Python files from the main directory
     if main_dir != ".":

@@ -84,8 +84,13 @@ def create_app_bundle(main_file_path):
         main_file_path
     ]
     
-    # Add icon if available
-    icon_paths = ["Trackwise.icns", "icon.icns", "Trackwise.ico", "icon.ico"]
+    # Add icon if available - prioritize Trackwise.ico
+    icon_paths = [
+        "Trackwise.icns",  # macOS native format (preferred)
+        "Trackwise.ico",   # Primary icon file
+        "icon.icns",       # Fallback macOS format
+        "icon.ico"         # Fallback icon
+    ]
     icon_found = None
     for icon_path in icon_paths:
         if os.path.exists(icon_path):
@@ -93,11 +98,18 @@ def create_app_bundle(main_file_path):
             break
     
     if icon_found:
+        cmd.extend(["--icon", icon_path])
         if icon_found.endswith('.icns'):
-            cmd.extend(["--icon", icon_path])
+            print(f"🎨  Using macOS native icon: {icon_path}")
+        elif icon_found.endswith('Trackwise.ico'):
+            print(f"🎨  Using primary Trackwise icon: {icon_path}")
+            print("💡 Consider converting to .icns format for better macOS integration")
         else:
-            print(f"⚠️  Icon file {icon_path} is not in .icns format (macOS preferred)")
-            print("   Consider converting to .icns format for better macOS integration")
+            print(f"⚠️  Using fallback icon: {icon_path}")
+            print("💡 Consider using Trackwise.ico for better branding")
+    else:
+        print("ℹ️  No icon file found - app will use default icon")
+        print("💡 Add Trackwise.ico to the project directory for custom app icon")
     
     # Add additional PyInstaller options for macOS
     cmd.extend([

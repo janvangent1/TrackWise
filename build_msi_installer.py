@@ -46,8 +46,13 @@ def create_setup_py(main_file_path):
     # Get the directory containing the main file
     main_dir = os.path.dirname(main_file_path) if os.path.dirname(main_file_path) else "."
     
-    # Look for icon file in main directory and current directory
-    icon_paths = ["Trackwise.ico", "icon.ico", os.path.join(main_dir, "Trackwise.ico"), os.path.join(main_dir, "icon.ico")]
+    # Look for icon file - prioritize Trackwise.ico
+    icon_paths = [
+        "Trackwise.ico",  # Primary icon file
+        os.path.join(main_dir, "Trackwise.ico"),  # In main directory
+        "icon.ico",  # Fallback icon
+        os.path.join(main_dir, "icon.ico")  # Fallback in main directory
+    ]
     icon_found = None
     for icon_path in icon_paths:
         if os.path.exists(icon_path):
@@ -56,6 +61,16 @@ def create_setup_py(main_file_path):
     
     # Create icon reference for setup.py
     icon_ref = f'"{icon_found}"' if icon_found else 'None'
+    
+    if icon_found:
+        if icon_found.endswith("Trackwise.ico"):
+            print(f"🎨  Using primary Trackwise icon: {icon_found}")
+        else:
+            print(f"⚠️  Using fallback icon: {icon_found}")
+            print("💡 Consider using Trackwise.ico for better branding")
+    else:
+        print("ℹ️  No icon file found - installer will use default icon")
+        print("💡 Add Trackwise.ico to the project directory for custom installer icon")
     
     # Simplified MSI configuration - only essential options
     msi_options = f'''{{

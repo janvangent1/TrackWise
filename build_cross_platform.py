@@ -130,8 +130,13 @@ def build_macos():
         "main_gui_enhanced.py"
     ]
     
-    # Add icon if available
-    icon_paths = ["Trackwise.icns", "icon.icns", "Trackwise.ico", "icon.ico"]
+    # Add icon if available - prioritize Trackwise.ico
+    icon_paths = [
+        "Trackwise.icns",  # macOS native format (preferred)
+        "Trackwise.ico",   # Primary icon file
+        "icon.icns",       # Fallback macOS format
+        "icon.ico"         # Fallback icon
+    ]
     icon_found = None
     for icon_path in icon_paths:
         if os.path.exists(icon_path):
@@ -140,6 +145,16 @@ def build_macos():
     
     if icon_found:
         cmd.extend(["--icon", icon_path])
+        if icon_found.endswith('Trackwise.ico'):
+            print(f"🎨  Using primary Trackwise icon: {icon_path}")
+        elif icon_found.endswith('.icns'):
+            print(f"🎨  Using macOS native icon: {icon_path}")
+        else:
+            print(f"⚠️  Using fallback icon: {icon_path}")
+            print("💡 Consider using Trackwise.ico for better branding")
+    else:
+        print("ℹ️  No icon file found - app will use default icon")
+        print("💡 Add Trackwise.ico to the project directory for custom app icon")
     
     # Add macOS-specific options
     cmd.extend([
@@ -219,13 +234,30 @@ def build_linux():
         "main_gui_enhanced.py"
     ]
     
-    # Add icon if available
-    icon_paths = ["Trackwise.ico", "icon.ico", "Trackwise.png", "icon.png"]
+    # Add icon if available - prioritize Trackwise.ico
+    icon_paths = [
+        "Trackwise.ico",   # Primary icon file
+        "Trackwise.png",   # Linux PNG format
+        "icon.ico",        # Fallback icon
+        "icon.png"         # Fallback PNG
+    ]
     icon_found = None
     for icon_path in icon_paths:
         if os.path.exists(icon_path):
             icon_found = icon_path
             break
+    
+    if icon_found:
+        if icon_found.endswith('Trackwise.ico'):
+            print(f"🎨  Using primary Trackwise icon: {icon_path}")
+        elif icon_found.endswith('Trackwise.png'):
+            print(f"🎨  Using Linux PNG icon: {icon_path}")
+        else:
+            print(f"⚠️  Using fallback icon: {icon_path}")
+            print("💡 Consider using Trackwise.ico for better branding")
+    else:
+        print("ℹ️  No icon file found - executable will use default icon")
+        print("💡 Add Trackwise.ico to the project directory for custom executable icon")
     
     if icon_found:
         cmd.extend(["--icon", icon_path])
