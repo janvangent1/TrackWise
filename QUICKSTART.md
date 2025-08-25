@@ -14,7 +14,7 @@ Get Trackwise up and running in minutes! 🚀
 - Python 3.7+ installed
 - pip package manager
 
-### Installation instructions
+### Installation
 ```bash
 # Clone or download the repository
 cd trackwise
