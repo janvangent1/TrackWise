@@ -52,6 +52,10 @@ def install_pyinstaller():
 
 def install_dmgbuild():
     """Install dmgbuild for creating DMG files"""
+    if platform.system() != "Darwin":
+        print("⚠️  dmgbuild is only available on macOS")
+        return False
+    
     try:
         import dmgbuild
         print("✓ dmgbuild is already installed")
@@ -73,7 +77,7 @@ def create_app_bundle(main_file_path):
     # PyInstaller command for macOS
     cmd = [
         "pyinstaller",
-        "--onefile",
+        "--onedir",  # Use directory mode for better compatibility
         "--windowed",  # No terminal window
         "--name=Trackwise",
         "--distpath=dist",
@@ -81,6 +85,7 @@ def create_app_bundle(main_file_path):
         "--specpath=build",
         "--clean",
         "--noconfirm",
+        "--debug=all",  # Add debug info for troubleshooting
         main_file_path
     ]
     
@@ -120,12 +125,28 @@ def create_app_bundle(main_file_path):
         "--hidden-import=requests",
         "--hidden-import=gpxpy",
         "--hidden-import=geopy",
+        "--hidden-import=geopy.distance",
         "--hidden-import=shapely",
+        "--hidden-import=shapely.geometry",
         "--hidden-import=matplotlib",
+        "--hidden-import=matplotlib.pyplot",
+        "--hidden-import=matplotlib.backends.backend_tkagg",
         "--hidden-import=folium",
+        "--hidden-import=folium.plugins",
         "--hidden-import=numpy",
+        "--hidden-import=tempfile",
+        "--hidden-import=webbrowser",
+        "--hidden-import=threading",
+        "--hidden-import=csv",
+        "--hidden-import=concurrent.futures",
+        "--hidden-import=xml.etree.ElementTree",
+        "--hidden-import=urllib3",
+        "--hidden-import=certifi",
         "--collect-all=matplotlib",
-        "--collect-all=folium"
+        "--collect-all=folium",
+        "--collect-all=geopy",
+        "--collect-all=shapely",
+        "--collect-all=gpxpy"
     ])
     
     try:
@@ -356,10 +377,18 @@ def main():
     
     print("\n💡 Next steps:")
     print("   1. Test the .app bundle by double-clicking")
-    print("   2. Test the installer (.dmg or .pkg)")
-    print("   3. Edit notarize.sh with your Apple Developer details")
-    print("   4. Notarize the app for distribution outside App Store")
-    print("   5. Consider code signing with a Developer ID certificate")
+    print("   2. If app crashes, run from Terminal for error details:")
+    print("      cd dist && ./Trackwise.app/Contents/MacOS/Trackwise")
+    print("   3. Test the installer (.dmg or .pkg)")
+    print("   4. Edit notarize.sh with your Apple Developer details")
+    print("   5. Notarize the app for distribution outside App Store")
+    print("   6. Consider code signing with a Developer ID certificate")
+    
+    print("\n🔧 Troubleshooting:")
+    print("   • App built with --onedir mode for better compatibility")
+    print("   • Debug mode enabled for detailed error logging")
+    print("   • All dependencies collected with --collect-all flags")
+    print("   • If still crashing, try building without --windowed flag")
 
 if __name__ == "__main__":
     main()
