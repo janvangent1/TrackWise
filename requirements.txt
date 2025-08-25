@@ -1,0 +1,39 @@
+# Core dependencies for Trackwise GPX Waypoint Finder
+# Install with: pip install -r requirements.txt
+
+# GUI Framework
+tkinter  # Usually included with Python
+
+# HTTP requests for API calls
+requests>=2.25.0
+
+# GPX file parsing
+gpxpy>=1.4.0
+
+# Geographic calculations
+geopy>=2.1.0
+
+# Geometric operations
+shapely>=1.7.0
+
+# Map visualization
+matplotlib>=3.3.0
+
+# Interactive web maps
+folium>=0.12.0
+
+# Numerical operations
+numpy>=1.19.0
+
+# Build tools (optional - for creating executables)
+# PyInstaller>=4.0
+# cx_Freeze>=6.0
+
+# Alternative build tool (optional)
+# nuitka>=1.0
+
+# Development dependencies (optional)
+# pytest>=6.0
+# black>=21.0
+# flake8>=3.8
+
