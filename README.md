@@ -15,8 +15,12 @@ A powerful Python application for finding petrol stations, supermarkets, bakerie
 ## 📋 Requirements
 
 - Python 3.7 or higher
-- Windows 10/11 (primary target)
 - Internet connection for API calls
+
+### Platform Support
+- **Windows**: 10/11 (primary target)
+- **macOS**: 10.14+ (Mojave or later)
+- **Linux**: Ubuntu 18.04+, Fedora 28+, and other modern distributions
 
 ## 🛠️ Installation
 
@@ -43,26 +47,41 @@ python main_gui_enhanced.py
 Use the included build scripts to create standalone executables:
 
 ```bash
-# Build with PyInstaller (recommended for antivirus)
-python build_executable.py
+# Cross-platform build (automatically detects OS)
+python build_cross_platform.py
 
-# Build MSI installer with cx_Freeze (best for distribution)
-python build_msi_installer.py
+# Platform-specific builds:
+# Windows
+python build_msi_installer.py    # MSI installer (recommended)
+python build_executable.py        # Standalone .exe
+
+# macOS
+python build_macos.py             # .app bundle + .dmg installer
+
+# Linux
+python build_linux.py             # Executable + AppImage
 ```
 
 ## 🔧 Build Options
 
-### PyInstaller Build (`build_executable.py`)
-- **Directory Mode** (Recommended): Creates a folder with all dependencies
-- **Single File Mode**: Creates one .exe file (higher antivirus risk)
-- **Console Mode**: Includes console window for debugging
-- **Bootloader Rebuild**: Compile from source to reduce false positives
+### Cross-Platform Builder (`build_cross_platform.py`)
+- **Automatic Detection**: Detects OS and builds appropriate package
+- **Universal**: Works on Windows, macOS, and Linux
+- **Smart Fallbacks**: Tries multiple installer types per platform
 
-### MSI Installer Build (`build_msi_installer.py`)
-- **Professional Installation**: Creates Windows MSI installer
-- **Lower False Positives**: MSI format reduces antivirus detections
-- **Auto Shortcuts**: Desktop and Start Menu shortcuts
-- **Easy Uninstall**: Standard Windows uninstallation
+### Windows Builds
+- **MSI Installer** (`build_msi_installer.py`): Professional Windows installer
+- **PyInstaller** (`build_executable.py`): Standalone .exe with antivirus optimizations
+
+### macOS Builds (`build_macos.py`)
+- **App Bundle**: Native .app package for macOS
+- **DMG Installer**: Standard disk image installer
+- **Code Signing**: Automatic app signing and notarization support
+
+### Linux Builds (`build_linux.py`)
+- **Standalone Binary**: Portable executable
+- **AppImage**: Self-contained application package
+- **Desktop Integration**: Menu entries and icons
 
 ## 📦 Dependencies
 
