@@ -1,233 +1,107 @@
-# Trackwise - GPX Waypoint Finder
+# TrackWise Web 2.0
 
-A powerful Python application for finding petrol stations, supermarkets, bakeries, cafes, repair shops, accommodation, and speed cameras along GPX routes. Perfect for motorcyclists, cyclists, and travelers planning their journeys.
+A web-based GPX waypoint finder — find petrol stations, supermarkets, bakeries, cafes, repair shops, accommodation, and speed cameras along any GPX route.
 
-## 🚀 Features
+Upload a GPX file from any browser on your local network. The Raspberry Pi does all the work.
 
-- **Multi-Place Search**: Find petrol stations, supermarkets, bakeries, cafes, repair shops, hotels, and speed cameras
-- **Smart Distance Calculation**: Configurable search distances for each place type
-- **Interactive Maps**: Built-in matplotlib preview and browser-based folium maps
-- **GPX Generation**: Create enhanced GPX files with waypoints and route deviations
-- **Road Routing**: Uses OSRM for accurate road-following routes to places
-- **User-Friendly GUI**: Intuitive tkinter interface with progress tracking
-- **Antivirus-Friendly**: Multiple build options to reduce false positive detections
+## Quick Start (Windows — Local Testing)
 
-## 📋 Requirements
-
-- Python 3.7 or higher
-- Internet connection for API calls
-
-### Platform Support
-- **Windows**: 10/11 (primary target)
-- **macOS**: 10.14+ (Mojave or later)
-- **Linux**: Ubuntu 18.04+, Fedora 28+, and other modern distributions
-
-## 🛠️ Installation
-
-### Option 1: Run from Source (Recommended for Development)
-
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/trackwise.git
-cd trackwise
+```
+python launcher.py
 ```
 
-2. Install dependencies:
+The launcher GUI will:
+- Start the web server (FastAPI + Uvicorn)
+- Let you open the browser with one click
+- Show live server logs
+
+**First run — install dependencies:**
+
+Click **📦 Install Dependencies** in the launcher, or run manually:
+
 ```bash
+cd web
+python -m venv .venv
+.venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-3. Run the application:
+## Project Structure
+
+```
+TrackWise 2.0/
+├── launcher.py              # Windows GUI launcher (tkinter)
+├── README.md
+├── web/
+│   ├── requirements.txt     # Python dependencies
+│   ├── backend/
+│   │   ├── app.py           # FastAPI application
+│   │   └── core/
+│   │       ├── gpx_parser.py    # GPX file parsing
+│   │       ├── overpass.py      # Overpass API (OpenStreetMap)
+│   │       ├── osrm.py          # OSRM road routing
+│   │       ├── search.py        # Main search orchestrator
+│   │       ├── gpx_writer.py    # GPX export
+│   │       └── place_types.py   # Place type config
+│   ├── frontend/
+│   │   ├── index.html           # Single-page app
+│   │   └── static/
+│   │       ├── css/style.css
+│   │       └── js/app.js        # Alpine.js + Leaflet.js app
+│   └── deployment/
+│       ├── trackwise.service    # systemd service
+│       ├── nginx.conf           # Nginx reverse proxy
+│       └── setup_pi.sh          # One-command Pi setup script
+└── old/                     # Original desktop app (archived)
+    └── main_gui_enhanced.py
+```
+
+## Raspberry Pi Deployment
+
+### One-command setup
+
 ```bash
-python main_gui_enhanced.py
+git clone https://github.com/janvangent1/TrackWise /home/pi/trackwise
+cd /home/pi/trackwise/web/deployment
+chmod +x setup_pi.sh
+./setup_pi.sh
 ```
 
-### Option 2: Build Executable
-
-Use the included build scripts to create standalone executables:
-
-```bash
-# Cross-platform build (automatically detects OS)
-python build_cross_platform.py
-
-# Platform-specific builds:
-# Windows
-python build_msi_installer.py    # MSI installer (recommended)
-python build_executable.py        # Standalone .exe
-
-# macOS
-python build_macos.py             # .app bundle + .dmg installer
-
-# Linux
-python build_linux.py             # Executable + AppImage
+Access TrackWise from any device on your network:
+```
+http://<raspberry-pi-ip>/
 ```
 
-## 🎨 Icon and Branding
+### Manual setup
 
-Trackwise automatically uses the `Trackwise.ico` file for custom icons across all platforms:
+See [web/deployment/setup_pi.sh](web/deployment/setup_pi.sh) for step-by-step instructions.
 
-- **Windows**: `.exe` files and desktop shortcuts will use the custom icon
-- **macOS**: `.app` bundles will use the icon (`.ico` or `.icns` format)
-- **Linux**: Executables will use the icon (`.ico` or `.png` format)
+## API Reference
 
-### Icon Conversion (macOS)
-For better macOS integration, convert your `.ico` file to `.icns` format:
-```bash
-python convert_icon.py
-```
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET`  | `/` | Serve the web UI |
+| `GET`  | `/api/place-types` | Available place types + defaults |
+| `POST` | `/api/search` | Start search (form: `gpx_file`, `config` JSON) |
+| `GET`  | `/api/search/{job_id}/stream` | SSE progress stream |
+| `GET`  | `/api/search/{job_id}/results` | JSON results |
+| `POST` | `/api/search/{job_id}/cancel` | Cancel running search |
+| `POST` | `/api/export/gpx` | Download GPX for selected places |
+| `GET`  | `/health` | Health check |
 
-This creates a native macOS icon file that provides better integration with the Dock, Finder, and other macOS features.
+## Place Types
 
-## 🔧 Build Options
+| Type | Default Distance | OSM Query |
+|------|-----------------|-----------|
+| ⛽ Petrol | 5.0 km | `amenity=fuel` |
+| 🛒 Supermarket | 0.1 km | `shop=supermarket` |
+| 🥖 Bakery | 0.1 km | `shop=bakery` |
+| ☕ Café/Restaurant | 0.1 km | `amenity=cafe\|restaurant\|fast_food` |
+| 🔧 Repair Shop | 0.1 km | `shop=car_repair\|motorcycle` |
+| 🏨 Accommodation | 0.1 km | `tourism=hotel\|motel\|hostel\|...` |
+| 📷 Speed Camera | on-route only | `highway=speed_camera` |
 
-### Cross-Platform Builder (`build_cross_platform.py`)
-- **Automatic Detection**: Detects OS and builds appropriate package
-- **Universal**: Works on Windows, macOS, and Linux
-- **Smart Fallbacks**: Tries multiple installer types per platform
+## External Services
 
-### Windows Builds
-- **MSI Installer** (`build_msi_installer.py`): Professional Windows installer
-- **PyInstaller** (`build_executable.py`): Standalone .exe with antivirus optimizations
-
-### macOS Builds (`build_macos.py`)
-- **App Bundle**: Native .app package for macOS
-- **DMG Installer**: Standard disk image installer
-- **Code Signing**: Automatic app signing and notarization support
-
-### Linux Builds (`build_linux.py`)
-- **Standalone Binary**: Portable executable
-- **AppImage**: Self-contained application package
-- **Desktop Integration**: Menu entries and icons
-
-## 📦 Dependencies
-
-Core dependencies (automatically installed):
-- `tkinter` - GUI framework
-- `requests` - HTTP requests for APIs
-- `gpxpy` - GPX file parsing
-- `geopy` - Geographic calculations
-- `shapely` - Geometric operations
-- `matplotlib` - Map visualization
-- `folium` - Interactive web maps
-- `numpy` - Numerical operations
-
-## 🗺️ Usage
-
-1. **Load GPX File**: Select your route file (.gpx format)
-2. **Configure Search**: Choose place types and search distances
-3. **Start Search**: Click "Search Selected Places" to begin
-4. **Review Results**: Check found places in the interactive list
-5. **Generate GPX**: Create enhanced GPX with selected waypoints
-6. **View Maps**: Use built-in preview or open in browser
-
-## 🎯 Place Types
-
-| Type | Default Distance | Description |
-|------|------------------|-------------|
-| ⛽ Petrol Stations | 5.0 km | Fuel stops along route |
-| 🛒 Supermarkets | 0.1 km | Shopping opportunities |
-| 🥖 Bakeries | 0.1 km | Fresh bread and pastries |
-| ☕ Cafés/Restaurants | 0.1 km | Food and refreshments |
-| 🔧 Repair Shops | 0.1 km | Vehicle maintenance |
-| 🏨 Accommodation | 0.1 km | Hotels, camping, B&Bs |
-| 📷 Speed Cameras | 0.05 km | Traffic enforcement (on-route only) |
-
-## 🗺️ Map Features
-
-- **Route Display**: Shows your GPX track in blue
-- **Place Markers**: Color-coded by type with numbered labels
-- **Road Routes**: Actual road paths to places (when available)
-- **Interactive Selection**: Click places to highlight on map
-- **Browser Maps**: Full-featured folium maps with clustering
-
-## 📁 File Structure
-
-```
-trackwise/
-├── main_gui_enhanced.py      # Main application
-├── build_executable.py       # PyInstaller build script
-├── build_msi_installer.py    # cx_Freeze MSI builder
-├── requirements.txt          # Python dependencies
-├── README.md                # This file
-├── LICENSE                  # License information
-└── examples/                # Sample GPX files
-```
-
-## 🛡️ Antivirus False Positive Solutions
-
-If your executable is flagged as suspicious:
-
-1. **Use MSI Installers**: Much lower false positive rates
-2. **Directory Mode**: Use `--onedir` instead of `--onefile`
-3. **Code Signing**: Professional certificates eliminate most issues
-4. **Report False Positives**: Submit to Microsoft Defender
-5. **Alternative Builders**: Try Nuitka or cx_Freeze
-
-## 🔍 API Services
-
-- **Overpass API**: OpenStreetMap data for place locations
-- **OSRM**: Road routing and navigation
-- **Rate Limiting**: Built-in retry logic and delays
-
-## 🚨 Troubleshooting
-
-### Common Issues
-
-1. **Permission Errors**: Run as Administrator or use cleanup option
-2. **Missing Dependencies**: Install with `pip install -r requirements.txt`
-3. **API Failures**: Check internet connection and try again later
-4. **Large GPX Files**: Reduce search distances for better performance
-
-### Build Issues
-
-1. **PyInstaller Failures**: Try MSI installer option
-2. **Antivirus Blocking**: Use MSI format or directory mode
-3. **Missing Modules**: Check hidden imports in build scripts
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-### Development Setup
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## 📞 Support
-
-- **Issues**: Report bugs on GitHub Issues
-- **Discussions**: Use GitHub Discussions for questions
-- **Wiki**: Check the repository wiki for detailed guides
-
-## 🙏 Acknowledgments
-
-- **OpenStreetMap** contributors for map data
-- **Overpass API** for place search services
-- **OSRM** for road routing
-- **Python community** for excellent libraries
-
-## 📊 Performance Tips
-
-- **Search Distances**: Smaller distances = faster processing
-- **Route Length**: Very long routes may take several minutes
-- **Internet Speed**: Faster connections improve API response times
-- **Memory Usage**: Large datasets may require more RAM
-
-## 🔄 Version History
-
-- **v1.0.0**: Initial release with core functionality
-- **v1.1.0**: Added MSI installer support
-- **v1.2.0**: Enhanced map visualization and place selection
-- **v1.3.0**: Improved antivirus compatibility and build options
-
----
-
-**Happy Route Planning! 🗺️✨**
-
+- **Overpass API** (overpass-api.de) — OpenStreetMap POI data — free, no key required
+- **OSRM** (router.project-osrm.org) — road routing — free, no key required
