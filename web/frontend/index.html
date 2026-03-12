@@ -21,9 +21,12 @@
         <span class="logo-text">TrackWise</span>
         <span class="logo-sub">GPX Waypoint Finder</span>
       </div>
-      <div class="header-status" x-show="jobId">
-        <span class="status-dot" :class="statusClass"></span>
-        <span x-text="statusText"></span>
+      <div class="header-right">
+        <div class="header-status" x-show="jobId">
+          <span class="status-dot" :class="statusClass"></span>
+          <span x-text="statusText"></span>
+        </div>
+        <a href="/admin" class="admin-link" title="Admin dashboard">⚙️ Admin</a>
       </div>
     </div>
   </header>
