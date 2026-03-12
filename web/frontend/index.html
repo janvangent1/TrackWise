@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TrackWise — GPX Waypoint Finder</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗺️</text></svg>" />
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- App CSS -->
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body x-data="trackwise()" x-init="init()">
+
+  <!-- ===== HEADER ===== -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">🗺️</span>
+        <span class="logo-text">TrackWise</span>
+        <span class="logo-sub">GPX Waypoint Finder</span>
+      </div>
+      <div class="header-status" x-show="jobId">
+        <span class="status-dot" :class="statusClass"></span>
+        <span x-text="statusText"></span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== MAIN LAYOUT ===== -->
+  <main class="app-main">
+
+    <!-- === LEFT PANEL: Controls === -->
+    <aside class="panel panel-left">
+
+      <!-- File Upload -->
+      <section class="card">
+        <h2>📂 GPX File</h2>
+        <div
+          class="drop-zone"
+          :class="{'drag-over': dragging, 'has-file': gpxFileName}"
+          @dragover.prevent="dragging = true"
+          @dragleave="dragging = false"
+          @drop.prevent="onDrop($event)"
+          @click="$refs.fileInput.click()"
+        >
+          <template x-if="!gpxFileName">
+            <div class="drop-hint">
+              <span class="drop-icon">📁</span>
+              <span>Drop GPX file here<br><small>or click to browse</small></span>
+            </div>
+          </template>
+          <template x-if="gpxFileName">
+            <div class="drop-hint selected">
+              <span class="drop-icon">✅</span>
+              <span x-text="gpxFileName"></span>
+            </div>
+          </template>
+          <input type="file" accept=".gpx" x-ref="fileInput" @change="onFileChange($event)" style="display:none" />
+        </div>
+      </section>
+
+      <!-- Search Configuration -->
+      <section class="card">
+        <h2>🔍 Search Config</h2>
+        <div class="place-types-grid">
+          <template x-for="(cfg, key) in placeTypes" :key="key">
+            <div class="place-type-row">
+              <label class="place-toggle">
+                <input
+                  type="checkbox"
+                  :checked="searchConfig[key] !== undefined"
+                  @change="togglePlaceType(key, $event.target.checked)"
+                />
+                <span class="place-emoji" x-text="cfg.emoji"></span>
+                <span class="place-name" x-text="cfg.name"></span>
+              </label>
+              <template x-if="!cfg.on_route_only">
+                <div class="distance-input">
+                  <input
+                    type="number"
+                    min="0.01"
+                    max="50"
+                    step="0.1"
+                    :value="searchConfig[key] ?? cfg.default_distance_km"
+                    @change="updateDistance(key, $event.target.value)"
+                    :disabled="searchConfig[key] === undefined"
+                    class="dist-field"
+                  />
+                  <span class="dist-unit">km</span>
+                </div>
+              </template>
+              <template x-if="cfg.on_route_only">
+                <span class="on-route-label">on track</span>
+              </template>
+            </div>
+          </template>
+        </div>
+
+        <!-- GPX Mode -->
+        <div class="gpx-mode-section">
+          <h3>GPX Export Mode</h3>
+          <label class="radio-row">
+            <input type="radio" value="waypoints_only" x-model="gpxMode" />
+            <span>Waypoints only</span>
+          </label>
+          <label class="radio-row">
+            <input type="radio" value="enhanced_track" x-model="gpxMode" />
+            <span>Enhanced track with route deviations</span>
+          </label>
+        </div>
+
+        <!-- Buttons -->
+        <div class="action-buttons">
+          <button
+            class="btn btn-primary"
+            :disabled="!gpxFile || Object.keys(searchConfig).length === 0 || searching"
+            @click="startSearch()"
+          >
+            <span x-show="!searching">🔍 Search Places</span>
+            <span x-show="searching">⏳ Searching…</span>
+          </button>
+          <button
+            class="btn btn-danger"
+            x-show="searching"
+            @click="cancelSearch()"
+          >⛔ Stop</button>
+          <button
+            class="btn btn-success"
+            :disabled="selectedPlaces.length === 0 && customWaypoints.length === 0"
+            @click="exportGpx()"
+            x-show="!searching && (places.length > 0 || customWaypoints.length > 0)"
+          >
+            ⬇️ Export GPX (<span x-text="selectedPlaces.length + customWaypoints.length"></span>)
+          </button>
+        </div>
+      </section>
+
+      <!-- Custom Waypoints -->
+      <section class="card" x-show="gpxFileName">
+        <h2>📍 Custom Waypoints</h2>
+        <button
+          class="btn"
+          :class="addWaypointMode ? 'btn-warning' : 'btn-primary'"
+          @click="toggleAddWaypointMode()"
+          style="width:100%"
+        >
+          <span x-show="!addWaypointMode">➕ Add Waypoint</span>
+          <span x-show="addWaypointMode">✕ Cancel Adding</span>
+        </button>
+        <div class="add-wpt-hint" x-show="addWaypointMode">Click anywhere on the map to place a waypoint</div>
+        <template x-if="customWaypoints.length > 0">
+          <ul class="custom-wpt-list">
+            <template x-for="wpt in customWaypoints" :key="wpt.id">
+              <li class="custom-wpt-item">
+                <span>📍</span>
+                <span class="wpt-name" x-text="wpt.name"></span>
+                <button class="btn-remove" @click="removeCustomWaypoint(wpt.id)" title="Remove">✕</button>
+              </li>
+            </template>
+          </ul>
+        </template>
+      </section>
+
+      <!-- Progress -->
+      <section class="card" x-show="searching || log.length > 0">
+        <h2>📡 Progress</h2>
+        <div class="progress-bar-wrap" x-show="searching">
+          <div class="progress-bar" :style="`width: ${progress}%`"></div>
+          <span class="progress-label" x-text="`${Math.round(progress)}%`"></span>
+        </div>
+        <div class="log-box" x-ref="logBox">
+          <template x-for="(line, i) in log" :key="i">
+            <div class="log-line" x-text="line"></div>
+          </template>
+        </div>
+      </section>
+
+    </aside>
+
+    <!-- === RIGHT PANEL: Map + Results === -->
+    <div class="panel panel-right">
+
+      <!-- Map -->
+      <div class="map-container">
+        <div id="map"></div>
+        <div class="map-overlay-empty" x-show="!places.length && !searching">
+          <div>Upload a GPX file and start searching to see the map</div>
+        </div>
+      </div>
+
+      <!-- Results Table -->
+      <section class="card results-section" x-show="places.length > 0">
+        <div class="results-header">
+          <h2>📋 Places Found (<span x-text="places.length"></span>)</h2>
+          <div class="results-actions">
+            <button class="btn btn-sm" @click="selectAll()">Select All</button>
+            <button class="btn btn-sm" @click="selectNone()">Select None</button>
+            <input
+              type="text"
+              placeholder="Filter..."
+              x-model="filterText"
+              class="filter-input"
+            />
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="results-table">
+            <thead>
+              <tr>
+                <th class="col-check">✓</th>
+                <th class="col-type" @click="sortBy('place_type')">Type</th>
+                <th class="col-name" @click="sortBy('base_name')">Name</th>
+                <th class="col-dist" @click="sortBy('distance_km')">Distance</th>
+                <th class="col-pos" @click="sortBy('route_position')">Route Pos.</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="place in filteredPlaces" :key="place.id">
+                <tr
+                  class="result-row"
+                  :class="{'row-selected': place.included, 'row-highlighted': highlightedId === place.id}"
+                  @click="highlightPlace(place)"
+                  @dblclick="togglePlace(place)"
+                >
+                  <td class="col-check">
+                    <input type="checkbox" :checked="place.included" @change="togglePlace(place)" @click.stop />
+                  </td>
+                  <td class="col-type">
+                    <span x-text="place.emoji"></span>
+                    <span x-text="place.type_label"></span>
+                  </td>
+                  <td class="col-name" x-text="place.base_name"></td>
+                  <td class="col-dist" x-text="`${place.distance_km} km`"></td>
+                  <td class="col-pos" x-text="`${(place.route_position / 1000).toFixed(1)} km`"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- ===== TOAST notifications ===== -->
+  <div class="toast-container">
+    <template x-for="(toast, i) in toasts" :key="i">
+      <div class="toast" :class="`toast-${toast.type}`" x-text="toast.message"></div>
+    </template>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

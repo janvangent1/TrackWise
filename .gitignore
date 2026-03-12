@@ -141,8 +141,7 @@ tmp/
 *.tmp
 *.temp
 
-# Map files
-*.html
+# Map files (generated exports only)
 map_*.html
 
 # Log files
