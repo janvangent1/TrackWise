@@ -6,16 +6,20 @@ Extracted from main_gui_enhanced.py and made GUI-independent.
 PLACE_TYPE_CONFIG = {
     "petrol": {
         "query": 'node["amenity"="fuel"]',
+        "tag_key": "amenity",
+        "tag_values": ["fuel"],
         "name": "Petrol Station",
         "emoji": "⛽",
         "color": "red",
-        "default_distance_km": 5.0,
+        "default_distance_km": 0.1,
         "garmin_symbol": "Gas Station",
         "label_prefix": "Fuel",
         "on_route_only": False,
     },
     "supermarket": {
         "query": 'node["shop"="supermarket"]',
+        "tag_key": "shop",
+        "tag_values": ["supermarket"],
         "name": "Supermarket",
         "emoji": "🛒",
         "color": "blue",
@@ -26,6 +30,8 @@ PLACE_TYPE_CONFIG = {
     },
     "bakery": {
         "query": 'node["shop"="bakery"]',
+        "tag_key": "shop",
+        "tag_values": ["bakery"],
         "name": "Bakery",
         "emoji": "🥖",
         "color": "orange",
@@ -36,6 +42,8 @@ PLACE_TYPE_CONFIG = {
     },
     "cafe": {
         "query": 'node["amenity"~"^(cafe|restaurant|fast_food)$"]',
+        "tag_key": "amenity",
+        "tag_values": ["cafe", "restaurant", "fast_food"],
         "name": "Café/Restaurant",
         "emoji": "☕",
         "color": "green",
@@ -46,6 +54,8 @@ PLACE_TYPE_CONFIG = {
     },
     "repair": {
         "query": 'node["shop"~"^(car_repair|motorcycle)$"]',
+        "tag_key": "shop",
+        "tag_values": ["car_repair", "motorcycle"],
         "name": "Repair Shop",
         "emoji": "🔧",
         "color": "purple",
@@ -56,6 +66,8 @@ PLACE_TYPE_CONFIG = {
     },
     "accommodation": {
         "query": 'node["tourism"~"^(hotel|motel|guest_house|hostel|camp_site|caravan_site)$"]',
+        "tag_key": "tourism",
+        "tag_values": ["hotel", "motel", "guest_house", "hostel", "camp_site", "caravan_site"],
         "name": "Accommodation",
         "emoji": "🏨",
         "color": "brown",
@@ -66,6 +78,8 @@ PLACE_TYPE_CONFIG = {
     },
     "speed_camera": {
         "query": 'node["highway"="speed_camera"]',
+        "tag_key": "highway",
+        "tag_values": ["speed_camera"],
         "name": "Speed Camera",
         "emoji": "📷",
         "color": "darkred",

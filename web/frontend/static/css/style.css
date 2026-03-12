@@ -165,6 +165,44 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .col-dist  { width: 80px; }
 .col-pos   { width: 90px; color: var(--text-muted); }
 
+/* ---- Map markers ----
+   Custom classes are applied to INNER divs (inside Leaflet's own container),
+   so no !important overrides are needed and Leaflet's transform positioning
+   is unaffected.
+---- */
+.tw-place-icon {
+  font-size: 20px;
+  line-height: 26px;
+  text-align: center;
+  background: transparent !important;
+  border: none !important;
+}
+.tw-route-endpoint {
+  background: transparent !important;
+  border: none !important;
+}
+.tw-endpoint {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.45);
+  border: 2px solid rgba(255,255,255,0.8);
+}
+.tw-endpoint-start  { background: #27ae60; color: #fff; }
+.tw-endpoint-finish { background: #e74c3c; color: #fff; }
+
+.tw-gpx-wpt {
+  font-size: 18px;
+  line-height: 1;
+  text-align: center;
+  background: transparent !important;
+  border: none !important;
+}
+
 /* ---- Toast ---- */
 .toast-container { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 9999; }
 .toast { padding: 10px 16px; border-radius: var(--radius); font-size: 13px; font-weight: 500; animation: slideIn .3s ease; }
@@ -173,6 +211,20 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .toast-info    { background: var(--accent);  color: #fff; }
 
 @keyframes slideIn { from{transform:translateX(60px);opacity:0} to{transform:none;opacity:1} }
+
+/* ---- Custom Waypoints ---- */
+.add-wpt-hint { font-size: 12px; color: var(--warn); margin-top: 6px; }
+.custom-wpt-list { list-style: none; margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.custom-wpt-item { display: flex; align-items: center; gap: 6px; background: var(--surface2); border-radius: 6px; padding: 5px 8px; font-size: 13px; }
+.custom-wpt-item .wpt-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn-remove { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; }
+.btn-remove:hover { color: var(--danger); }
+.btn-warning { background: var(--warn); color: #fff; }
+.btn-warning:hover { background: #d68910; }
+
+/* ---- Add-waypoint map cursor ---- */
+.tw-add-wpt-mode { cursor: crosshair !important; }
+.tw-add-wpt-mode .leaflet-interactive { cursor: crosshair !important; }
 
 /* ---- Responsive ---- */
 @media (max-width: 768px) {

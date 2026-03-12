@@ -33,6 +33,8 @@ from fastapi.staticfiles import StaticFiles
 
 from core.gpx_parser import parse_gpx
 from core.gpx_writer import build_enhanced_track_gpx, build_waypoints_only_gpx
+from core.osrm import get_road_route_multi
+from core.valhalla import get_valhalla_route
 from core.place_types import PLACE_TYPE_CONFIG
 from core.search import SearchConfig, run_search
 
@@ -246,15 +248,19 @@ async def stream_search(job_id: str, request: Request):
                 yield ": ping\n\n"
                 last_ping = now
 
-            # If job is done but we haven't seen the terminal event yet, wait briefly
-            if job.status in ("done", "error", "cancelled") and not events:
-                await asyncio.sleep(0.1)
-                events = job.get_events_from(index)
-                if not events:
-                    break
-                continue
-
             await asyncio.sleep(0.3)
+
+            # Safety exit: job ended but terminal event not yet seen.
+            # Poll up to 3 more seconds to avoid breaking before last events arrive.
+            if job.status in ("done", "error", "cancelled") and not events:
+                for _ in range(10):
+                    await asyncio.sleep(0.3)
+                    events = job.get_events_from(index)
+                    if events:
+                        break
+                if not events:
+                    break  # genuinely nothing left — exit
+                continue
 
     return StreamingResponse(
         event_generator(),
@@ -293,6 +299,31 @@ async def cancel_search(job_id: str):
     return {"status": "cancellation requested"}
 
 
+@app.post("/api/route")
+async def route_through_waypoints(request: Request):
+    """
+    Route through N waypoints via OSRM.
+    Body: {"waypoints": [[lat, lon], ...]}
+    Returns: {"route_points": [[lon, lat], ...]}
+    """
+    body = await request.json()
+    waypoints = body.get("waypoints", [])
+    profile = body.get("profile", "cycling")
+    if len(waypoints) < 2:
+        raise HTTPException(status_code=422, detail="At least 2 waypoints required")
+
+    loop = asyncio.get_event_loop()
+    if profile == "motorcycle_offroad":
+        result = await loop.run_in_executor(None, get_valhalla_route, waypoints, profile)
+    else:
+        result = await loop.run_in_executor(None, get_road_route_multi, waypoints, profile)
+
+    if result is None:
+        raise HTTPException(status_code=502, detail="Routing service unavailable")
+
+    return {"route_points": [[lon, lat] for lon, lat in result]}
+
+
 @app.post("/api/export/gpx")
 async def export_gpx(request: Request):
     """
@@ -309,27 +340,35 @@ async def export_gpx(request: Request):
     job_id = body.get("job_id")
     selected_ids = body.get("selected_ids", [])
     mode = body.get("mode", "waypoints_only")
+    custom_waypoints = body.get("custom_waypoints", [])  # [{lat, lon, name}, ...]
 
-    job = JOBS.get(job_id)
-    if not job or not job.result:
-        raise HTTPException(status_code=404, detail="Job not found or not complete")
+    # Allow export with only custom waypoints (no completed search job required)
+    selected_places = []
+    road_routes = {}
+    route_points = []
+    gpx_obj = None
 
-    result = job.result
-    all_places = result["places"]
-    road_routes = result["road_routes"]
-    route_points = result["route_points"]
-    gpx_obj = result.get("gpx_obj")
+    if job_id:
+        job = JOBS.get(job_id)
+        if job and job.result:
+            result = job.result
+            all_places = result["places"]
+            selected_places = [p for p in all_places if p["id"] in selected_ids]
+            road_routes = result["road_routes"]
+            route_points = result["route_points"]
+            gpx_obj = result.get("gpx_obj")
 
-    # Filter to selected
-    selected_places = [p for p in all_places if p["id"] in selected_ids]
-    if not selected_places:
-        raise HTTPException(status_code=422, detail="No places selected")
+    if not selected_places and not custom_waypoints:
+        raise HTTPException(status_code=422, detail="No places or custom waypoints selected")
 
     try:
         if mode == "enhanced_track":
-            gpx_xml = build_enhanced_track_gpx(gpx_obj, route_points, selected_places, road_routes)
+            gpx_xml = build_enhanced_track_gpx(
+                gpx_obj, route_points, selected_places, road_routes,
+                custom_waypoints=custom_waypoints,
+            )
         else:
-            gpx_xml = build_waypoints_only_gpx(selected_places)
+            gpx_xml = build_waypoints_only_gpx(selected_places, custom_waypoints=custom_waypoints)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"GPX generation error: {e}")
 

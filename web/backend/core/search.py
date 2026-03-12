@@ -6,7 +6,8 @@ Yields progress events as dicts so callers (SSE, CLI, tests) can consume them.
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 from typing import Callable, Dict, Generator, List, Optional, Tuple
 
 from geopy.distance import geodesic
@@ -14,13 +15,14 @@ from shapely.geometry import LineString, Point
 
 from .gpx_parser import RoutePoint, calculate_total_distance_km
 from .osrm import get_road_route
-from .overpass import collect_places_from_segment
+from .overpass import collect_all_types_from_segment
 from .place_types import PLACE_TYPE_CONFIG
 
 logger = logging.getLogger(__name__)
 
 CHUNK_KM = 50
-MAX_OVERPASS_WORKERS = 2
+OVERPASS_PAUSE = 5.0   # seconds between sequential Overpass requests (polite usage)
+MAX_OSRM_WORKERS = 2   # public router.project-osrm.org rate-limits parallel requests
 
 
 # ---------------------------------------------------------------------------
@@ -160,63 +162,79 @@ def run_search(
         place_types = list(config.place_types.items())
         n_types = len(place_types)
 
-        for type_idx, (place_type, distance_km) in enumerate(place_types):
+        # Build the type-job descriptor list (shared across all segments)
+        type_job_list = [
+            {
+                "place_type": place_type,
+                "pt_config": PLACE_TYPE_CONFIG[place_type],
+                "buffer_deg": distance_km / 111.0,
+                "buffer_km": distance_km,
+                "on_route_only": PLACE_TYPE_CONFIG[place_type].get("on_route_only", False),
+            }
+            for place_type, distance_km in place_types
+        ]
+        places_per_type: Dict[str, Dict[tuple, dict]] = {pt: {} for pt, _ in place_types}
+
+        total_segs = len(segments)
+        yield {
+            "type": "progress",
+            "message": (
+                f"Querying Overpass: {total_segs} segment(s), "
+                f"all {n_types} type(s) per request (around filter)…"
+            ),
+            "percent": 5,
+        }
+
+        # Sequential requests — the public Overpass server does not like parallel
+        # queries from the same IP.  A {OVERPASS_PAUSE}s pause between requests is polite.
+        for seg_idx, seg in enumerate(segments):
             if _cancelled():
                 yield {"type": "cancelled"}
                 return
 
-            pt_config = PLACE_TYPE_CONFIG[place_type]
-            buffer_deg = distance_km / 111.0
-            on_route_only = pt_config.get("on_route_only", False)
-            query_filter = pt_config["query"]
+            if seg_idx > 0:
+                yield {
+                    "type": "progress",
+                    "message": f"  Waiting {OVERPASS_PAUSE:.0f}s before next segment…",
+                    "percent": 5 + (seg_idx / total_segs) * 60,
+                }
+                time.sleep(OVERPASS_PAUSE)
 
-            base_pct = 5 + (type_idx / n_types) * 60
             yield {
                 "type": "progress",
-                "message": f"Searching for {pt_config['name']}s within {distance_km} km...",
-                "percent": base_pct,
+                "message": f"  Querying Overpass for segment {seg_idx+1}/{total_segs}… (may take up to 45s)",
+                "percent": 5 + (seg_idx / total_segs) * 60,
             }
 
-            places_for_type: Dict[tuple, dict] = {}
+            try:
+                seg_results = collect_all_types_from_segment(seg, type_job_list, cancel_check)
+                for pt, places in seg_results.items():
+                    places_per_type[pt].update(places)
+                counts = {pt: len(v) for pt, v in places_per_type.items() if v}
+                logger.info(f"Segment {seg_idx+1}/{total_segs} done — totals: {counts}")
+            except Exception as e:
+                logger.error(f"Segment {seg_idx+1} error: {e}")
 
-            with ThreadPoolExecutor(max_workers=MAX_OVERPASS_WORKERS) as executor:
-                future_to_idx = {
-                    executor.submit(
-                        collect_places_from_segment,
-                        seg, buffer_deg, query_filter, place_type,
-                        pt_config, on_route_only, distance_km, cancel_check,
-                    ): i
-                    for i, seg in enumerate(segments)
-                }
+            counts_str = ", ".join(
+                f"{PLACE_TYPE_CONFIG[pt]['emoji']} {len(v)}"
+                for pt, v in places_per_type.items() if v
+            )
+            yield {
+                "type": "progress",
+                "message": (
+                    f"  [{seg_idx+1}/{total_segs}] segment done"
+                    + (f" — {counts_str}" if counts_str else "")
+                ),
+                "percent": 5 + ((seg_idx + 1) / total_segs) * 60,
+            }
 
-                completed = 0
-                for future in as_completed(future_to_idx):
-                    if _cancelled():
-                        yield {"type": "cancelled"}
-                        return
-
-                    completed += 1
-                    try:
-                        seg_places = future.result()
-                        new_count = sum(1 for k in seg_places if k not in places_for_type)
-                        places_for_type.update(seg_places)
-                        if completed % 5 == 0 or completed == len(segments):
-                            yield {
-                                "type": "progress",
-                                "message": (
-                                    f"  [{completed}/{len(segments)}] segments done, "
-                                    f"{len(places_for_type)} {pt_config['name']}s found so far"
-                                ),
-                                "percent": base_pct + (completed / len(segments)) * (60 / n_types),
-                            }
-                    except Exception as e:
-                        logger.error(f"Segment query error for {place_type}: {e}")
-
+        for place_type, places_for_type in places_per_type.items():
             all_places_raw.update(places_for_type)
+            pt_config = PLACE_TYPE_CONFIG[place_type]
             yield {
                 "type": "progress",
                 "message": f"Found {len(places_for_type)} {pt_config['name']}s",
-                "percent": base_pct + (60 / n_types),
+                "percent": 65,
             }
 
         if _cancelled():
@@ -272,34 +290,64 @@ def run_search(
         # Sort each type by route position
         enhanced_places.sort(key=lambda p: p["route_position"])
 
-        # ---- Road routing ----
-        yield {"type": "progress", "message": f"Calculating road routes for {len(enhanced_places)} places...", "percent": 85}
-
-        road_routes: Dict[str, List] = {}
-        for i, place in enumerate(enhanced_places):
-            if _cancelled():
-                yield {"type": "cancelled"}
-                return
-
+        # ---- Road routing (parallel) ----
+        # Pre-compute nearest route point for each place that needs routing
+        routing_jobs = []  # (place_id, start_lat, start_lon, end_lat, end_lon)
+        for place in enhanced_places:
             if place["distance_km"] < 0.2:
-                continue  # Too close to track, skip
-
+                continue  # On track — no detour needed
             place_point = Point(place["lon"], place["lat"])
             nearest = route_line.interpolate(route_line.project(place_point))
-
-            route = get_road_route(
+            routing_jobs.append((
+                place["id"],
                 float(nearest.y), float(nearest.x),
                 place["lat"], place["lon"],
-            )
+            ))
 
-            if route and len(route) > 1:
-                road_routes[place["id"]] = route
+        n_jobs = len(routing_jobs)
+        yield {
+            "type": "progress",
+            "message": f"Calculating road routes for {n_jobs} places ({MAX_OSRM_WORKERS} parallel)...",
+            "percent": 85,
+        }
 
-            if (i + 1) % 5 == 0 or (i + 1) == len(enhanced_places):
+        road_routes: Dict[str, List] = {}
+
+        def _fetch_route(job):
+            pid, s_lat, s_lon, e_lat, e_lon = job
+            route = get_road_route(s_lat, s_lon, e_lat, e_lon)
+            return pid, route, s_lat, s_lon, e_lat, e_lon
+
+        with ThreadPoolExecutor(max_workers=MAX_OSRM_WORKERS) as executor:
+            future_to_job = {executor.submit(_fetch_route, job): job for job in routing_jobs}
+            pending = set(future_to_job.keys())
+            completed = 0
+
+            while pending:
+                if _cancelled():
+                    yield {"type": "cancelled"}
+                    return
+
+                done, pending = wait(pending, timeout=3.0, return_when=FIRST_COMPLETED)
+
+                for future in done:
+                    completed += 1
+                    try:
+                        pid, route, s_lat, s_lon, e_lat, e_lon = future.result()
+                        if route and len(route) > 1:
+                            road_routes[pid] = route
+                        else:
+                            # OSRM unavailable — straight-line fallback so map always shows a line
+                            road_routes[pid] = [[s_lon, s_lat], [e_lon, e_lat]]
+                    except Exception as e:
+                        logger.warning(f"Road route fetch error: {e}")
+
+                still_running = len(pending)
+                suffix = f" ({still_running} in progress…)" if still_running else ""
                 yield {
                     "type": "progress",
-                    "message": f"Road routes: {i+1}/{len(enhanced_places)} ({len(road_routes)} found)",
-                    "percent": 85 + (i + 1) / len(enhanced_places) * 13,
+                    "message": f"Road routes: {completed}/{n_jobs} done ({len(road_routes)} found){suffix}",
+                    "percent": 85 + completed / max(n_jobs, 1) * 13,
                 }
 
         yield {"type": "progress", "message": "Search complete!", "percent": 99}

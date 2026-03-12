@@ -12,7 +12,8 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-OSRM_URL = "http://router.project-osrm.org/route/v1/driving"
+OSRM_BASE = "http://router.project-osrm.org/route/v1"
+OSRM_PROFILES = {"driving", "cycling", "foot"}
 
 
 RoutePoint = Tuple[float, float]  # (longitude, latitude)
@@ -30,12 +31,12 @@ def get_road_route(
     Returns list of (lon, lat) tuples, or None on failure.
     """
     url = (
-        f"{OSRM_URL}/{start_lon},{start_lat};{end_lon},{end_lat}"
+        f"{OSRM_BASE}/driving/{start_lon},{start_lat};{end_lon},{end_lat}"
         "?overview=full&geometries=geojson"
     )
 
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=6)
         response.raise_for_status()
         data = response.json()
 
@@ -50,6 +51,58 @@ def get_road_route(
             return None
 
         # GeoJSON coords are [lon, lat]
+        return [(coord[0], coord[1]) for coord in coordinates]
+
+    except requests.exceptions.ConnectionError:
+        logger.warning("OSRM connection error")
+        return None
+    except requests.exceptions.Timeout:
+        logger.warning("OSRM timeout")
+        return None
+    except requests.exceptions.HTTPError as e:
+        code = e.response.status_code if e.response is not None else 0
+        logger.warning(f"OSRM HTTP {code}")
+        return None
+    except Exception as e:
+        logger.error(f"OSRM unexpected error: {e}")
+        return None
+
+
+def get_road_route_multi(
+    waypoints: List[Tuple[float, float]],
+    profile: str = "cycling",
+) -> Optional[List[RoutePoint]]:
+    """
+    Get road-following route through multiple waypoints via OSRM.
+
+    waypoints: list of (lat, lon) tuples
+    profile: "driving" | "cycling" | "foot"
+    Returns list of (lon, lat) tuples, or None on failure.
+    """
+    if len(waypoints) < 2:
+        return None
+
+    if profile not in OSRM_PROFILES:
+        profile = "cycling"
+
+    coords = ";".join(f"{lon},{lat}" for lat, lon in waypoints)
+    url = f"{OSRM_BASE}/{profile}/{coords}?overview=full&geometries=geojson"
+
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        routes = data.get("routes", [])
+        if not routes:
+            logger.debug("OSRM multi: no routes found")
+            return None
+
+        geometry = routes[0].get("geometry", {})
+        coordinates = geometry.get("coordinates", [])
+        if not coordinates:
+            return None
+
         return [(coord[0], coord[1]) for coord in coordinates]
 
     except requests.exceptions.ConnectionError:

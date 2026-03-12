@@ -58,23 +58,186 @@ TrackWise 2.0/
 
 ## Raspberry Pi Deployment
 
-### One-command setup
+This guide is for deploying TrackWise **alongside an existing application** (e.g. regenboog) using **Cloudflare Tunnel** (no port forwarding required).
+
+> **Do NOT use `setup_pi.sh` if you already have nginx and Cloudflare Tunnel running** — it removes the default nginx site and uses a catch-all config that will break other hosted apps. Follow the manual steps below instead.
+
+---
+
+### Step 1 — Get the code onto the Pi
+
+SSH into your Pi, then clone the repo:
 
 ```bash
-git clone https://github.com/janvangent1/TrackWise /home/pi/trackwise
+cd ~
+git clone https://github.com/janvangent1/trackwise.git trackwise
+```
+
+---
+
+### Step 2 — Install Python dependencies
+
+```bash
+cd ~/trackwise/web
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+deactivate
+```
+
+---
+
+### Step 3 — Install the systemd service
+
+```bash
+sudo sed "s|/home/pi/trackwise|$HOME/trackwise|g; s|User=pi|User=$(whoami)|g" \
+    ~/trackwise/web/deployment/trackwise.service \
+    | sudo tee /etc/systemd/system/trackwise.service > /dev/null
+
+sudo systemctl daemon-reload
+sudo systemctl enable trackwise
+sudo systemctl start trackwise
+
+# Verify:
+sudo systemctl status trackwise
+```
+
+Logs: `sudo journalctl -u trackwise -f`
+
+---
+
+### Step 4 — Configure nginx (optional)
+
+> You can skip this step if Cloudflare Tunnel points directly to `localhost:8000`. nginx adds static file caching and is useful if you want to route multiple apps through port 80, but it's not required.
+
+Create a new nginx site config (this does **not** affect your other apps):
+
+```bash
+sudo nano /etc/nginx/sites-available/trackwise
+```
+
+Paste:
+
+```nginx
+server {
+    listen 80;
+    server_name trackwise.jbouquet.be;
+
+    client_max_body_size 10M;
+    proxy_buffering off;
+
+    location / {
+        proxy_pass         http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_set_header   X-Accel-Buffering no;
+        proxy_set_header   Connection        '';
+        proxy_read_timeout 300s;
+    }
+
+    location /static/ {
+        alias /home/pi/trackwise/web/frontend/static/;
+        expires 1h;
+        add_header Cache-Control "public, immutable";
+    }
+
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript;
+    gzip_min_length 1000;
+}
+```
+
+> If your Pi username is not `pi`, replace `/home/pi` with your actual home directory (check with `echo $HOME`).
+
+Enable the config and reload nginx:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/trackwise /etc/nginx/sites-enabled/trackwise
+sudo nginx -t          # must print "syntax ok"
+sudo systemctl reload nginx
+```
+
+---
+
+### Step 5 — Add the hostname in Cloudflare
+
+One tunnel can serve multiple subdomains — each subdomain is a separate "Public Hostname" entry pointing to a different local port. You don't need a second tunnel.
+
+1. Go to [https://one.dash.cloudflare.com](https://one.dash.cloudflare.com)
+2. Left sidebar: **Networks** → **Tunnels**
+3. Find your tunnel `jbouquet` → click the **three dots (...)** on the right → **Configure**
+4. Click the **Public Hostname** tab — you'll see the existing `regenboog.jbouquet.be` entry here
+5. Click **Add a public hostname**
+6. Fill in:
+   - **Subdomain:** `trackwise`
+   - **Domain:** `jbouquet.be` *(select from dropdown)*
+   - **Path:** leave empty
+   - **Service Type:** `HTTP`
+   - **URL:** `localhost:8000`
+7. Click **Save hostname**
+
+Cloudflare automatically creates the DNS record — nothing to do in the DNS tab.
+
+#### Verify on the Pi (optional)
+
+```bash
+sudo systemctl status cloudflared
+# or check logs:
+sudo journalctl -u cloudflared -f
+```
+
+---
+
+### Step 6 — Test
+
+```bash
+# From the Pi itself:
+curl -s http://localhost:8000/health
+# Expected: {"status":"ok"}
+```
+
+Then open `https://trackwise.jbouquet.be` in your browser.
+
+---
+
+### Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| TrackWise not starting | `sudo journalctl -u trackwise -f` |
+| 502 Bad Gateway in browser | TrackWise service is down — check above |
+| Regenboog broke after nginx reload | `sudo nginx -t` — look for config conflicts |
+| Progress bar doesn't update live | Cloudflare may buffer SSE — the search still completes, progress appears in batches. This is cosmetic only. |
+
+---
+
+### Architecture overview
+
+```
+Browser
+  └── Cloudflare Tunnel (jbouquet)
+        ├── regenboog.jbouquet.be  →  localhost:3000  (Node.js/Express)
+        └── trackwise.jbouquet.be  →  localhost:8000  (FastAPI/uvicorn)
+```
+
+---
+
+### One-command setup (fresh Pi, no other apps)
+
+If this is the only app on the Pi:
+
+```bash
+git clone https://github.com/janvangent1/trackwise.git /home/pi/trackwise
 cd /home/pi/trackwise/web/deployment
 chmod +x setup_pi.sh
 ./setup_pi.sh
 ```
 
-Access TrackWise from any device on your network:
-```
-http://<raspberry-pi-ip>/
-```
-
-### Manual setup
-
-See [web/deployment/setup_pi.sh](web/deployment/setup_pi.sh) for step-by-step instructions.
+Access on your local network: `http://<raspberry-pi-ip>/`
 
 ## API Reference
 

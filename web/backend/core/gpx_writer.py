@@ -20,7 +20,24 @@ def _garmin_symbol(place_type: str) -> str:
     return PLACE_TYPE_CONFIG.get(place_type, {}).get("garmin_symbol", "Flag, Blue")
 
 
-def build_waypoints_only_gpx(places: List[dict]) -> str:
+def _append_custom_waypoints(gpx_out, custom_waypoints: Optional[List[dict]]) -> None:
+    """Append custom user-placed waypoints to a GPX object."""
+    if not custom_waypoints:
+        return
+    for cw in custom_waypoints:
+        wpt = gpxpy.gpx.GPXWaypoint(
+            latitude=float(cw["lat"]),
+            longitude=float(cw["lon"]),
+            name=cw.get("name", "Waypoint"),
+            symbol="Flag, Blue",
+        )
+        gpx_out.waypoints.append(wpt)
+
+
+def build_waypoints_only_gpx(
+    places: List[dict],
+    custom_waypoints: Optional[List[dict]] = None,
+) -> str:
     """Return GPX XML string with only waypoints (no original track)."""
     gpx_out = gpxpy.gpx.GPX()
     gpx_out.name = "Places Found Along Route"
@@ -45,6 +62,7 @@ def build_waypoints_only_gpx(places: List[dict]) -> str:
         )
         gpx_out.waypoints.append(wpt)
 
+    _append_custom_waypoints(gpx_out, custom_waypoints)
     return gpx_out.to_xml()
 
 
@@ -53,6 +71,7 @@ def build_enhanced_track_gpx(
     route_points: List[RoutePoint],
     places: List[dict],
     road_routes: Dict[str, List[RoutePoint]],
+    custom_waypoints: Optional[List[dict]] = None,
 ) -> str:
     """
     Return GPX XML string with the original track plus deviation legs to each place.
@@ -139,4 +158,5 @@ def build_enhanced_track_gpx(
         )
         gpx_out.waypoints.append(wpt)
 
+    _append_custom_waypoints(gpx_out, custom_waypoints)
     return gpx_out.to_xml()
