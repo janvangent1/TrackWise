@@ -66,6 +66,46 @@ def build_waypoints_only_gpx(
     return gpx_out.to_xml()
 
 
+def build_track_with_waypoints_gpx(
+    original_gpx,
+    route_points: List[RoutePoint],
+    places: List[dict],
+    custom_waypoints: Optional[List[dict]] = None,
+) -> str:
+    """Return GPX XML string with the original track plus waypoints, no route deviations."""
+    gpx_out = gpxpy.gpx.GPX()
+    gpx_out.name = "Route with Places"
+    gpx_out.description = "Original route with selected places as waypoints"
+
+    track = gpxpy.gpx.GPXTrack()
+    track.name = "Original Route"
+    segment = gpxpy.gpx.GPXTrackSegment()
+    for lon, lat in route_points:
+        segment.points.append(gpxpy.gpx.GPXTrackPoint(latitude=lat, longitude=lon))
+    track.segments.append(segment)
+    gpx_out.tracks.append(track)
+
+    counters: Dict[str, int] = {}
+    for place in sorted(places, key=lambda p: p.get("route_position", 0)):
+        pt = place["place_type"]
+        counters[pt] = counters.get(pt, 0) + 1
+        cfg = PLACE_TYPE_CONFIG.get(pt, {})
+        wpt = gpxpy.gpx.GPXWaypoint(
+            latitude=place["lat"],
+            longitude=place["lon"],
+            name=make_waypoint_name(place, counters[pt]),
+            description=(
+                f"{cfg.get('name', 'Place')}: {place['base_name']} "
+                f"- Distance from route: {place['distance_km']} km"
+            ),
+            symbol=_garmin_symbol(pt),
+        )
+        gpx_out.waypoints.append(wpt)
+
+    _append_custom_waypoints(gpx_out, custom_waypoints)
+    return gpx_out.to_xml()
+
+
 def build_enhanced_track_gpx(
     original_gpx,
     route_points: List[RoutePoint],

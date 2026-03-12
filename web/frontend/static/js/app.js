@@ -28,7 +28,7 @@ function trackwise() {
 
     placeTypes: {},
     searchConfig: {},
-    gpxMode: 'waypoints_only',
+    gpxMode: 'track_with_waypoints',
 
     jobId: null,
     searching: false,

@@ -35,7 +35,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 
 from core.gpx_parser import parse_gpx
-from core.gpx_writer import build_enhanced_track_gpx, build_waypoints_only_gpx
+from core.gpx_writer import build_enhanced_track_gpx, build_track_with_waypoints_gpx, build_waypoints_only_gpx
 from core.osrm import get_road_route_multi
 from core.valhalla import get_valhalla_route
 from core.place_types import PLACE_TYPE_CONFIG
@@ -519,6 +519,11 @@ async def export_gpx(request: Request):
         if mode == "enhanced_track":
             gpx_xml = build_enhanced_track_gpx(
                 gpx_obj, route_points, selected_places, road_routes,
+                custom_waypoints=custom_waypoints,
+            )
+        elif mode == "track_with_waypoints":
+            gpx_xml = build_track_with_waypoints_gpx(
+                gpx_obj, route_points, selected_places,
                 custom_waypoints=custom_waypoints,
             )
         else:
