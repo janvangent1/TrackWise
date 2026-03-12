@@ -114,18 +114,33 @@ class StatsTracker:
         except Exception:
             pass
 
+    def _new_entry(self, job_id, filename, status, error=""):
+        return {
+            "job_id": job_id,
+            "at": time.strftime("%Y-%m-%d %H:%M"),
+            "filename": filename or "unknown.gpx",
+            "status": status,
+            "waypoints": 0,
+            "route_km": 0,
+            "error": error[:300] if error else "",
+        }
+
+    def _push_entry(self, entry):
+        self._data["recent_searches"].insert(0, entry)
+        self._data["recent_searches"] = self._data["recent_searches"][:20]
+
     def record_search_started(self, job_id: str, filename: str):
         with self._lock:
             self._data["total_searches"] += 1
-            self._data["recent_searches"].insert(0, {
-                "job_id": job_id,
-                "at": time.strftime("%Y-%m-%d %H:%M"),
-                "filename": filename or "unknown.gpx",
-                "status": "running",
-                "waypoints": 0,
-                "route_km": 0,
-            })
-            self._data["recent_searches"] = self._data["recent_searches"][:20]
+            self._push_entry(self._new_entry(job_id, filename, "running"))
+            self._save()
+
+    def record_upload_failed(self, filename: str, error: str):
+        """Record a failure that happened before a job was created (e.g. GPX parse error)."""
+        with self._lock:
+            self._data["total_searches"] += 1
+            self._data["failed_searches"] += 1
+            self._push_entry(self._new_entry(None, filename, "failed", error))
             self._save()
 
     def record_search_done(self, job_id: str, waypoints: int, route_km: float):
@@ -149,18 +164,26 @@ class StatsTracker:
                     break
             self._save()
 
-    def record_search_failed(self, job_id: str):
+    def record_search_failed(self, job_id: str, error: str = ""):
         with self._lock:
             self._data["failed_searches"] += 1
             for e in self._data["recent_searches"]:
                 if e.get("job_id") == job_id:
                     e["status"] = "failed"
+                    e["error"] = error[:300] if error else ""
                     break
             self._save()
 
     def record_gpx_export(self):
         with self._lock:
             self._data["gpx_exports"] += 1
+            self._save()
+
+    def record_export_error(self, error: str):
+        with self._lock:
+            errors = self._data.setdefault("recent_export_errors", [])
+            errors.insert(0, {"at": time.strftime("%Y-%m-%d %H:%M"), "error": error[:300]})
+            self._data["recent_export_errors"] = errors[:10]
             self._save()
 
     def snapshot(self) -> dict:
@@ -249,13 +272,13 @@ def _run_search_worker(job: SearchJob, route_points, gpx_obj, search_config):
                 return
             elif event["type"] == "error":
                 job.status = "error"
-                STATS.record_search_failed(job.job_id)
+                STATS.record_search_failed(job.job_id, event.get("message", "Unknown error"))
                 return
     except Exception as e:
         logger.exception(f"Job {job.job_id} crashed")
         job.add_event({"type": "error", "message": str(e)})
         job.status = "error"
-        STATS.record_search_failed(job.job_id)
+        STATS.record_search_failed(job.job_id, str(e))
 
 
 # ---------------------------------------------------------------------------
@@ -312,9 +335,11 @@ async def start_search(
             {pt: float(dist) for pt, dist in place_types_raw.items() if float(dist) > 0}
         )
     except Exception as e:
+        STATS.record_upload_failed(gpx_file.filename, f"Invalid config: {e}")
         raise HTTPException(status_code=422, detail=f"Invalid config: {e}")
 
     if not search_config.place_types:
+        STATS.record_upload_failed(gpx_file.filename, "No place types selected")
         raise HTTPException(status_code=422, detail="At least one place type must be selected.")
 
     # Parse GPX
@@ -324,6 +349,7 @@ async def start_search(
             raise ValueError("Empty file")
         route_points, gpx_obj = parse_gpx(content)
     except Exception as e:
+        STATS.record_upload_failed(gpx_file.filename, f"GPX parse error: {e}")
         raise HTTPException(status_code=422, detail=f"GPX parse error: {e}")
 
     # Create job
@@ -498,6 +524,7 @@ async def export_gpx(request: Request):
         else:
             gpx_xml = build_waypoints_only_gpx(selected_places, custom_waypoints=custom_waypoints)
     except Exception as e:
+        STATS.record_export_error(f"GPX generation error: {e}")
         raise HTTPException(status_code=500, detail=f"GPX generation error: {e}")
 
     STATS.record_gpx_export()
@@ -519,16 +546,37 @@ def _admin_html(stats: dict) -> str:
         "cancelled": "#fbbf24",
         "failed": "#f87171",
     }
-    rows = "".join(
-        f"<tr>"
-        f"<td>{s['at']}</td>"
-        f"<td>{s['filename']}</td>"
-        f"<td>{s['route_km']} km</td>"
-        f"<td><span style='color:{status_colors.get(s['status'], '#94a3b8')};font-weight:600'>{s['status']}</span></td>"
-        f"<td>{s['waypoints']}</td>"
-        f"</tr>"
-        for s in stats["recent_searches"]
-    ) or "<tr><td colspan='5' style='color:#475569;text-align:center;padding:2rem'>No searches yet</td></tr>"
+
+    def search_row(s):
+        err = s.get("error", "")
+        err_cell = f"<td style='color:#f87171;font-size:.8rem' title='{err}'>{err[:80] + ('…' if len(err) > 80 else '')}</td>" if err else "<td style='color:#475569'>—</td>"
+        return (
+            f"<tr>"
+            f"<td>{s['at']}</td>"
+            f"<td>{s['filename']}</td>"
+            f"<td>{s['route_km']} km</td>"
+            f"<td><span style='color:{status_colors.get(s['status'], '#94a3b8')};font-weight:600'>{s['status']}</span></td>"
+            f"<td>{s['waypoints']}</td>"
+            f"{err_cell}"
+            f"</tr>"
+        )
+
+    rows = "".join(search_row(s) for s in stats["recent_searches"]) \
+        or "<tr><td colspan='6' style='color:#475569;text-align:center;padding:2rem'>No searches yet</td></tr>"
+
+    export_errors = stats.get("recent_export_errors", [])
+    export_error_section = ""
+    if export_errors:
+        export_rows = "".join(
+            f"<tr><td>{e['at']}</td><td style='color:#f87171'>{e['error']}</td></tr>"
+            for e in export_errors
+        )
+        export_error_section = f"""
+  <h2 style="margin-top:2rem">Recent Export Errors</h2>
+  <table>
+    <thead><tr><th>Time</th><th>Error</th></tr></thead>
+    <tbody>{export_rows}</tbody>
+  </table>"""
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -539,7 +587,10 @@ def _admin_html(stats: dict) -> str:
   <style>
     *{{box-sizing:border-box;margin:0;padding:0}}
     body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f172a;color:#e2e8f0;padding:2rem}}
-    h1{{font-size:1.5rem;font-weight:700;margin-bottom:.25rem}}
+    .topbar{{display:flex;align-items:center;justify-content:space-between;margin-bottom:.25rem}}
+    h1{{font-size:1.5rem;font-weight:700}}
+    .home-btn{{font-size:.8rem;color:#94a3b8;text-decoration:none;padding:5px 12px;border:1px solid #334155;border-radius:6px}}
+    .home-btn:hover{{color:#60a5fa;border-color:#60a5fa}}
     .meta{{color:#94a3b8;font-size:.875rem;margin-bottom:2rem}}
     .cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;margin-bottom:2rem}}
     .card{{background:#1e293b;border-radius:.75rem;padding:1.25rem}}
@@ -554,7 +605,10 @@ def _admin_html(stats: dict) -> str:
   </style>
 </head>
 <body>
-  <h1>TrackWise Admin</h1>
+  <div class="topbar">
+    <h1>TrackWise Admin</h1>
+    <a href="/" class="home-btn">← Home</a>
+  </div>
   <p class="meta">
     Started {stats['started_at']} &nbsp;&middot;&nbsp;
     Uptime {stats['uptime']} &nbsp;&middot;&nbsp;
@@ -573,10 +627,11 @@ def _admin_html(stats: dict) -> str:
   <h2>Recent Searches (last 20)</h2>
   <table>
     <thead>
-      <tr><th>Time</th><th>File</th><th>Route</th><th>Status</th><th>Waypoints</th></tr>
+      <tr><th>Time</th><th>File</th><th>Route</th><th>Status</th><th>Waypoints</th><th>Error</th></tr>
     </thead>
     <tbody>{rows}</tbody>
   </table>
+  {export_error_section}
 
   <p class="footer">Auto-refreshes every 30 seconds</p>
 </body>
